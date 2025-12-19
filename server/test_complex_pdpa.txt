@@ -1,0 +1,10 @@
+Singapore Statutes Online Current version as at 20 Sep 2020 PDF created date on: 20 Sep 2020 Personal Data Protection Act 2012 (No. 26 of 2012)
+11 Compliance with Act
+(1) In meeting its responsibilities under this Act, an organization shall consider what a reasonable person would consider appropriate in the circumstances.
+(2) An organization is responsible for personal data in its possession or under its control.
+(a) shall designate one or more individuals who shall be responsible for ensuring that the organization complies with this Act; and
+(b) shall make available to the public the business contact information of at least one of the individuals designated under paragraph (a).
+13 Consent required
+An organization shall not on or after the appointed day collect, use or disclose personal data about an individual unless
+(a) the individual gives, or is deemed to have given, his consent under this Act to the collection, use or disclosure; or
+(b) the collection, use or disclosure, as the case may be, without the consent of the individual is required or authorised under this Act or any other written law.

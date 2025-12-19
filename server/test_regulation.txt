@@ -1,0 +1,8 @@
+SECTION 13. CONSENT AND NOTIFICATION
+(1) An organization shall not collect, use or disclose personal data about an individual unless:
+(a) the individual gives, or is deemed to have given, his consent under this Act to the collection, use or disclosure; or
+(b) the collection, use or disclosure, as the case may be without the consent of the individual is required or authorised under this Act or any other written law.
+
+(2) An organization must ensure that any personal data collected is accurate and complete.
+
+(3) Ideally, the organization should monitor internal processes regularly.
