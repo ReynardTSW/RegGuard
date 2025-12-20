@@ -66,6 +66,82 @@ body {
 .tag-Medium { background: rgba(245, 158, 11, 0.2); color: #fcd34d; }
 .tag-Low { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
 .tag-Unknown { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; }
+.tag-CRITICAL { background: rgba(239, 68, 68, 0.25); color: #fecdd3; }
+.tag-HIGH { background: rgba(251, 191, 36, 0.22); color: #fef3c7; }
+.tag-MEDIUM { background: rgba(59, 130, 246, 0.18); color: #bfdbfe; }
+.tag-LOW { background: rgba(34, 197, 94, 0.18); color: #bbf7d0; }
+
+.score-pill {
+  padding: 0.25rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.score-pill--block {
+  display: inline-block;
+  width: auto;
+  margin-bottom: 0.2rem;
+}
+
+.score-low {
+  background: rgba(34, 197, 94, 0.18);
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.score-medium {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.score-high {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fef3c7;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.score-critical {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fecdd3;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.status-select {
+  background: rgba(15, 23, 42, 0.7);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.status-pill {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-done {
+  background: rgba(34,197,94,0.18);
+  color: #bbf7d0;
+}
+
+.status-later {
+  background: rgba(234,179,8,0.2);
+  color: #fef3c7;
+}
+
+.status-cancelled {
+  background: rgba(239,68,68,0.18);
+  color: #fecdd3;
+}
 
 .rule-card {
   position: relative;
@@ -81,6 +157,16 @@ body {
 .rule-card--selected {
   border: 1px solid rgba(59, 130, 246, 0.7);
   box-shadow: 0 8px 16px rgba(59, 130, 246, 0.15);
+}
+
+.rule-card--completed {
+  border: 1px solid rgba(34, 197, 94, 0.6);
+  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.2);
+}
+
+.rule-card--later {
+  border: 1px solid rgba(234, 179, 8, 0.5);
+  box-shadow: 0 8px 16px rgba(234, 179, 8, 0.2);
 }
 
 .rule-hover {
@@ -190,6 +276,21 @@ body {
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.05);
   background: rgba(255, 255, 255, 0.02);
+}
+
+.step-list-item.status-done {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.step-list-item.status-later {
+  background: rgba(234, 179, 8, 0.1);
+  border-color: rgba(234, 179, 8, 0.25);
+}
+
+.step-list-item.status-cancelled {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .step-move-btn {

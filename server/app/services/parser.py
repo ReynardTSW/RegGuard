@@ -8,6 +8,76 @@ class RegulatoryParser:
         self.high_risk_pattern = re.compile(r'\b(must|shall|required|prohibited|strictly)\b', re.IGNORECASE)
         self.medium_risk_pattern = re.compile(r'\b(should|ensure|monitor|verify)\b', re.IGNORECASE)
         self.low_risk_pattern = re.compile(r'\b(may|can|optional|recommend)\b', re.IGNORECASE)
+        self.penalty_keywords = ["liable", "fine", "imprisonment", "penalty", "prosecution"]
+        self.breach_keywords = [
+            "breach",
+            "incident",
+            "unauthorized access",
+            "unauthorised access",
+            "data leak",
+            "data loss",
+            "security incident",
+            "ransomware",
+            "compromise",
+        ]
+        self.enforcement_cases = [
+            "singhealth",
+            "ihis",
+            "grab",
+            "lazada",
+            "pdpc decision",
+            "commission decision",
+            "enforcement case",
+        ]
+
+    def classify_score(self, text: str) -> (int, str, dict, list):
+        """
+        Return (score, category, flags, reasons) based on keyword presence.
+        """
+        lower = text.lower()
+        score = 0
+        reasons = []
+
+        penalty_hit = any(kw in lower for kw in self.penalty_keywords)
+        mandatory_hit = bool(re.search(r'\b(shall|must)\b', lower))
+        breach_hit = any(kw in lower for kw in self.breach_keywords)
+        enforcement_hit = any(case in lower for case in self.enforcement_cases)
+
+        if penalty_hit:
+            score += 40
+            reasons.append("+40 penalty keyword")
+
+        if mandatory_hit:
+            score += 30
+            reasons.append("+30 mandatory (shall/must)")
+
+        if breach_hit:
+            score += 20
+            reasons.append("+20 data/security breach")
+
+        if enforcement_hit:
+            score += 10
+            reasons.append("+10 PDPC enforcement mention")
+
+        score = min(score, 100)
+        category = self.score_to_category(score)
+        flags = {
+            "penalty": penalty_hit,
+            "mandatory": mandatory_hit,
+            "breach": breach_hit,
+            "enforcement": enforcement_hit,
+        }
+        return score, category, flags, reasons
+
+    @staticmethod
+    def score_to_category(score: int) -> str:
+        if score >= 80:
+            return "CRITICAL"
+        if score >= 60:
+            return "HIGH"
+        if score >= 40:
+            return "MEDIUM"
+        return "LOW"
 
     def determine_severity(self, text: str) -> (str, str):
         """
@@ -141,6 +211,7 @@ class RegulatoryParser:
 
                 # If we get here, it's a valid rule.
                 severity, modal_found = self.determine_severity(clean_sentence)
+                score, category, flags, reasons = self.classify_score(clean_sentence)
                 
                 rule_counter += 1
                 item = RegulationItem(
@@ -148,7 +219,11 @@ class RegulatoryParser:
                     text=clean_sentence,
                     modal_verb=modal_found,
                     severity=severity,
-                    action="Immediate Action" if severity == "High" else "Review"
+                    score=score,
+                    category=category,
+                    score_flags=flags,
+                    score_reasons=reasons,
+                    action="Immediate Action" if category in ("CRITICAL", "HIGH") or severity == "High" else "Review"
                 )
                 items.append(item)
             

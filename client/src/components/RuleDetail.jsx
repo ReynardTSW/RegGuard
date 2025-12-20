@@ -2,15 +2,27 @@ import { useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { toActionStatement, extractCoreObligations, toActionList } from '../utils/text';
 
+const STATUS_OPTIONS = [
+  { value: 'todo', label: 'To do', className: '' },
+  { value: 'done', label: 'Completed', className: 'status-badge status-done' },
+  { value: 'later', label: 'Later date', className: 'status-badge status-later' },
+  { value: 'cancelled', label: 'Cancelled', className: 'status-badge status-cancelled' },
+];
+
 export default function RuleDetail({
   rule,
   steps,
   onAddStep,
-  onToggleStepStatus,
+  onUpdateStepStatus,
+  onUpdateStepComment,
   onReorderSteps,
 }) {
   const [draftStep, setDraftStep] = useState('');
   const [draftDueDate, setDraftDueDate] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [draftAssignee, setDraftAssignee] = useState('');
+  const [draftComment, setDraftComment] = useState('');
+  const [selectedStepId, setSelectedStepId] = useState(null);
 
   const coreObligations = useMemo(
     () => extractCoreObligations(rule.text),
@@ -18,12 +30,23 @@ export default function RuleDetail({
   );
   const actionStatement = useMemo(() => toActionStatement(rule.text), [rule.text]);
   const actionList = useMemo(() => toActionList(rule.text), [rule.text]);
+  const selectedStep = steps.find((s) => s.id === selectedStepId);
+
+  const scoreClass = (score) => {
+    if (score >= 80) return 'score-pill score-critical';
+    if (score >= 60) return 'score-pill score-high';
+    if (score >= 40) return 'score-pill score-medium';
+    return 'score-pill score-low';
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onAddStep(rule.control_id, draftStep, draftDueDate);
+    onAddStep(rule.control_id, draftStep, draftDueDate, draftDescription, draftAssignee, draftComment);
     setDraftStep('');
     setDraftDueDate('');
+    setDraftDescription('');
+    setDraftAssignee('');
+    setDraftComment('');
   };
 
   const handleStepDragEnd = (result) => {
@@ -40,7 +63,10 @@ export default function RuleDetail({
           </div>
           <h2 style={{ margin: 0 }}>Rule Detail</h2>
         </div>
-        <span className={`tag tag-${rule.severity}`}>{rule.severity}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <span className={scoreClass(rule.score)}>Score {rule.score}</span>
+          <span className={`tag tag-${rule.severity}`}>{rule.severity}</span>
+        </div>
       </div>
 
       <div className="rule-detail-grid">
@@ -69,6 +95,19 @@ export default function RuleDetail({
               </ul>
             ) : (
               <div style={{ fontWeight: 600 }}>{actionStatement}</div>
+            )}
+          </div>
+
+          <div style={{ marginTop: '1rem' }}>
+            <p style={{ color: 'var(--text-secondary)', margin: 0 }}>Scoring breakdown</p>
+            {rule.score_reasons?.length ? (
+              <ul style={{ margin: '0.4rem 0 0', paddingLeft: '1.1rem', color: 'var(--text-primary)' }}>
+                {rule.score_reasons.map((reason, idx) => (
+                  <li key={idx} style={{ lineHeight: 1.3 }}>{reason}</li>
+                ))}
+              </ul>
+            ) : (
+              <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>No scoring reasons available.</p>
             )}
           </div>
         </div>
@@ -103,6 +142,50 @@ export default function RuleDetail({
                 color: 'var(--text-primary)',
               }}
             />
+            <input
+              type="text"
+              placeholder="Assignee (optional)"
+              value={draftAssignee}
+              onChange={(e) => setDraftAssignee(e.target.value)}
+              style={{
+                flex: '1 1 180px',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(15,23,42,0.6)',
+                color: 'var(--text-primary)',
+              }}
+            />
+            <textarea
+              placeholder="Description / context"
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+              rows={2}
+              style={{
+                flex: '1 1 100%',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(15,23,42,0.6)',
+                color: 'var(--text-primary)',
+                resize: 'vertical',
+              }}
+            />
+            <textarea
+              placeholder="Comment (e.g., blockers, notes)"
+              value={draftComment}
+              onChange={(e) => setDraftComment(e.target.value)}
+              rows={2}
+              style={{
+                flex: '1 1 100%',
+                padding: '0.75rem 0.9rem',
+                borderRadius: '8px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(15,23,42,0.6)',
+                color: 'var(--text-primary)',
+                resize: 'vertical',
+              }}
+            />
             <button type="submit" className="btn">
               Add Step
             </button>
@@ -113,7 +196,7 @@ export default function RuleDetail({
               <p style={{ color: 'var(--text-secondary)' }}>No actionable steps yet.</p>
             ) : (
               <>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>To do</p>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Priority (top = highest)</p>
                 <DragDropContext onDragEnd={handleStepDragEnd}>
                   <Droppable droppableId={`${rule.control_id}-steps`}>
                     {(provided) => (
@@ -133,13 +216,22 @@ export default function RuleDetail({
                                   background: snapshot.isDragging ? 'rgba(30,41,59,0.9)' : undefined,
                                   ...draggableProvided.draggableProps.style,
                                 }}
-                                onClick={() => onToggleStepStatus(rule.control_id, step.id)}
-                                title="Click to toggle done"
+                                onClick={() => setSelectedStepId(step.id)}
+                                title={step.comment ? `Comment: ${step.comment}` : 'Click to view details'}
                               >
                                 <div className="step-handle" {...draggableProvided.dragHandleProps}>
                                   ::
                                 </div>
-                                <input type="checkbox" readOnly checked={step.status === 'done'} />
+                                <select
+                                  value={step.status}
+                                  onChange={(e) => onUpdateStepStatus(rule.control_id, step.id, e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="status-select"
+                                >
+                                  {STATUS_OPTIONS.map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                  ))}
+                                </select>
                                 <span className={step.status === 'done' ? 'step-done' : ''}>{step.text}</span>
                                 {step.dueDate && (
                                   <span className="step-date">Due {step.dueDate}</span>
@@ -153,6 +245,44 @@ export default function RuleDetail({
                     )}
                   </Droppable>
                 </DragDropContext>
+                {selectedStep && (
+                  <div style={{ marginTop: '1rem', padding: '0.85rem', borderRadius: '10px', background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Task detail</div>
+                        <div style={{ fontWeight: 600 }}>{selectedStep.text}</div>
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                        Status: <strong>{selectedStep.status}</strong>
+                      </div>
+                    </div>
+                    {selectedStep.description && (
+                      <p style={{ marginTop: '0.5rem', color: 'var(--text-primary)' }}>{selectedStep.description}</p>
+                    )}
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>Comment</div>
+                      <textarea
+                        value={selectedStep.comment || ''}
+                        onChange={(e) => onUpdateStepComment?.(rule.control_id, selectedStep.id, e.target.value)}
+                        rows={2}
+                        style={{
+                          width: '100%',
+                          padding: '0.65rem 0.8rem',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          background: 'rgba(15,23,42,0.6)',
+                          color: 'var(--text-primary)',
+                          resize: 'vertical',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.35rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                      <span>Created: {selectedStep.createdAt ? new Date(selectedStep.createdAt).toLocaleString() : '—'}</span>
+                      <span>Due: {selectedStep.dueDate || '—'}</span>
+                      <span>Assignee: {selectedStep.assignee || 'Unassigned'}</span>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>

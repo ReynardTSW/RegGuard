@@ -1,5 +1,12 @@
 import { toActionList, summarizeRule } from '../utils/text';
 
+const scoreClass = (score) => {
+  if (score >= 80) return 'score-pill score-critical';
+  if (score >= 60) return 'score-pill score-high';
+  if (score >= 40) return 'score-pill score-medium';
+  return 'score-pill score-low';
+};
+
 export default function DetectedRulesList({
   rules,
   onSelectRule,
@@ -27,15 +34,24 @@ export default function DetectedRulesList({
               }
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                {item.control_id} — {summarizeRule(item.text)}
+                {item.control_id} - {summarizeRule(item.text)}
               </span>
-              <span className={`tag tag-${item.severity}`}>{item.severity}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
+                <span className={scoreClass(item.score)}>Score {item.score}</span>
+                <span className={`tag tag-${item.severity}`}>{item.severity}</span>
+              </div>
             </div>
             <div style={{ fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>
               {toActionList(item.text)[0]}
             </div>
+            {item.score_reasons?.length > 0 && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                Scoring: {item.score_reasons.slice(0, 2).join(' · ')}
+                {item.score_reasons.length > 2 ? ' · …' : ''}
+              </div>
+            )}
             {(actionStepsByRule[item.control_id] || []).length > 0 && (
               <div style={{ marginTop: '0.75rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                 {(actionStepsByRule[item.control_id] || []).slice(0, 2).map((s) => (
