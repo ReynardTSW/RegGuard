@@ -127,57 +127,97 @@ export default function KanbanBoard({
                                 {toActionList(item.text)[0]}
                               </div>
                               <div style={{ marginTop: '0.75rem' }}>
-                                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '0.3rem' }}>
-                                  Priority order (top = highest)
+                                <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 800, marginBottom: '0.35rem' }}>
+                                  Tasks
                                 </div>
                                 {steps.length === 0 ? (
                                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No steps yet.</div>
                                 ) : (
-                                      <ul className="step-list">
-                                    {steps.map((s, idx) => (
+                                  <ul className="step-list">
+                                    {steps.map((s) => {
+                                      const statusLabel = STATUS_OPTIONS.find((opt) => opt.value === s.status)?.label || 'To do';
+                                      const nearDue =
+                                        s.dueDate &&
+                                        (() => {
+                                          try {
+                                            const days = (new Date(s.dueDate) - new Date()) / (1000 * 60 * 60 * 24);
+                                            return days <= 7;
+                                          } catch (e) {
+                                            return false;
+                                          }
+                                        })();
+                                      const isDone = (s.status || '').toLowerCase() === 'done';
+                                      const strikeStyle = isDone ? { textDecoration: 'line-through', opacity: 0.75 } : {};
+                                      return (
                                       <li
                                         key={s.id}
                                         className={`step-list-item status-${s.status || 'todo'}`}
-                                        title={s.comment ? `Comment: ${s.comment}` : 'No comment'}
+                                        title={s.comment ? `Comment: ${s.comment}` : undefined}
+                                        style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}
                                       >
-                                        <button
-                                          type="button"
-                                        className="step-move-btn"
-                                        aria-label="move up"
-                                        title="Higher priority"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (idx > 0) onReorderSteps?.(item.control_id, idx, idx - 1);
-                                        }}
-                                      >
-                                        ↑
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="step-move-btn"
-                                        aria-label="move down"
-                                        title="Lower priority"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (idx < steps.length - 1) onReorderSteps?.(item.control_id, idx, idx + 1);
-                                        }}
-                                      >
-                                        ↓
-                                      </button>
-                                        <select
-                                          value={s.status}
-                                          onChange={(e) => onUpdateStepStatus?.(item.control_id, s.id, e.target.value)}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="status-select"
-                                        >
-                                          {STATUS_OPTIONS.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                          ))}
-                                        </select>
-                                        <span className={s.status === 'done' ? 'step-done' : ''}>{s.text}</span>
-                                        {s.dueDate && <span className="step-date">({s.dueDate})</span>}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
+                                          <span
+                                            style={{
+                                              display: 'inline-block',
+                                              padding: '0.2rem 0.5rem',
+                                              borderRadius: '6px',
+                                              fontSize: '0.75rem',
+                                              fontWeight: 700,
+                                              background:
+                                                (s.priority || '').toLowerCase() === 'high'
+                                                  ? 'rgba(248,113,113,0.35)'
+                                                  : (s.priority || '').toLowerCase() === 'medium'
+                                                  ? 'rgba(251,191,36,0.35)'
+                                                  : 'rgba(59,130,246,0.2)',
+                                              color:
+                                                (s.priority || '').toLowerCase() === 'high'
+                                                  ? '#b91c1c'
+                                                  : (s.priority || '').toLowerCase() === 'medium'
+                                                  ? '#92400e'
+                                                  : '#1d4ed8',
+                                              minWidth: '54px',
+                                              textAlign: 'center',
+                                            }}
+                                            style={strikeStyle}
+                                          >
+                                            {(s.priority || 'low').toUpperCase()}
+                                          </span>
+                                          <select
+                                            value={s.status}
+                                            onChange={(e) => onUpdateStepStatus?.(item.control_id, s.id, e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="status-select"
+                                            style={{ minWidth: '120px' }}
+                                          >
+                                            {STATUS_OPTIONS.map((opt) => (
+                                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                          </select>
+                                          <span className={s.status === 'done' ? 'step-done' : ''} style={{ wordBreak: 'break-word', flex: '1 1 140px', minWidth: '160px', color: 'var(--text-primary)', ...strikeStyle }}>
+                                            {s.text}
+                                          </span>
+                                        </div>
+                                        {s.assignee && (
+                                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', paddingLeft: '0.2rem', ...strikeStyle }}>
+                                            Assignee: {s.assignee}
+                                          </div>
+                                        )}
+                                        {s.dueDate && (
+                                          <div
+                                            style={{
+                                              fontSize: '0.8rem',
+                                              color: isDone ? 'var(--text-secondary)' : (nearDue ? '#fca5a5' : 'var(--text-secondary)'),
+                                              fontWeight: nearDue && !isDone ? 700 : 500,
+                                              paddingLeft: '0.2rem',
+                                              ...strikeStyle,
+                                            }}
+                                          >
+                                            Deadline: {s.dueDate}
+                                          </div>
+                                        )}
                                       </li>
-                                    ))}
+                                      );
+                                    })}
                                   </ul>
                                 )}
                               </div>
@@ -246,12 +286,33 @@ export default function KanbanBoard({
               {modalRule.text}
             </p>
             <div style={{ marginTop: '0.75rem' }}>
-              <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Tasks (top = higher priority)</h4>
+              <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Tasks</h4>
               <ul className="step-list" style={{ marginTop: '0.5rem' }}>
                 {(actionStepsByRule[modalRule.control_id] || []).map((s) => (
                   <li key={s.id} className="step-list-item">
-                    <span className={`status-pill status-${s.status || 'todo'}`}>
-                      {STATUS_OPTIONS.find((o) => o.value === s.status)?.label || 'To do'}
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.2rem 0.5rem',
+                        borderRadius: '6px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        background:
+                          (s.priority || '').toLowerCase() === 'high'
+                            ? 'rgba(248,113,113,0.2)'
+                            : (s.priority || '').toLowerCase() === 'medium'
+                            ? 'rgba(251,191,36,0.2)'
+                            : 'rgba(74,222,128,0.2)',
+                        color:
+                          (s.priority || '').toLowerCase() === 'high'
+                            ? '#b91c1c'
+                            : (s.priority || '').toLowerCase() === 'medium'
+                            ? '#92400e'
+                            : '#166534',
+                        marginRight: '0.35rem',
+                      }}
+                    >
+                      {(s.priority || 'low').toUpperCase()}
                     </span>
                     <span className={s.status === 'done' ? 'step-done' : ''}>{s.text}</span>
                     {s.dueDate && <span className="step-date">({s.dueDate})</span>}

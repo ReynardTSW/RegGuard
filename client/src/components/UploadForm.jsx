@@ -1,19 +1,23 @@
 import { useState } from 'react';
 import { uploadRegulation } from '../services/api';
 
-export default function UploadForm({ onUploadSuccess }) {
+export default function UploadForm({ onUploadSuccess, detectionRules = [], onFileSelected, externalLoading }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    const busy = externalLoading || loading;
 
     const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
+        onFileSelected?.(file);
+
         setLoading(true);
         setError(null);
 
         try {
-            const result = await uploadRegulation(file);
+            const result = await uploadRegulation(file, detectionRules);
             onUploadSuccess(result.items);
         } catch (err) {
             setError("Failed to upload file. Please try again.");
@@ -37,10 +41,10 @@ export default function UploadForm({ onUploadSuccess }) {
                     onChange={handleFileChange}
                     style={{ display: 'none' }}
                     id="file-upload"
-                    disabled={loading}
+                    disabled={busy}
                 />
                 <label htmlFor="file-upload" className="btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-                    {loading ? (
+                    {busy ? (
                         <span>Processing...</span>
                     ) : (
                         <>

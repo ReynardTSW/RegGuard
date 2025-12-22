@@ -22,6 +22,8 @@ export default function RuleDetail({
   const [draftDescription, setDraftDescription] = useState('');
   const [draftAssignee, setDraftAssignee] = useState('');
   const [draftComment, setDraftComment] = useState('');
+  const [draftPriority, setDraftPriority] = useState('low');
+  const [dueDateError, setDueDateError] = useState('');
   const [selectedStepId, setSelectedStepId] = useState(null);
 
   const coreObligations = useMemo(
@@ -41,12 +43,14 @@ export default function RuleDetail({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onAddStep(rule.control_id, draftStep, draftDueDate, draftDescription, draftAssignee, draftComment);
+    if (dueDateError) return;
+    onAddStep(rule.control_id, draftStep, draftDueDate, draftDescription, draftAssignee, draftComment, draftPriority);
     setDraftStep('');
     setDraftDueDate('');
     setDraftDescription('');
     setDraftAssignee('');
     setDraftComment('');
+    setDraftPriority('low');
   };
 
   const handleStepDragEnd = (result) => {
@@ -131,17 +135,41 @@ export default function RuleDetail({
             />
             <input
               type="date"
+              inputMode="numeric"
+              pattern="\d{4}-\d{2}-\d{2}"
               value={draftDueDate}
-              onChange={(e) => setDraftDueDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              onChange={(e) => {
+                const val = e.target.value;
+                // Allow partial typing; only enforce when pattern matches
+                setDraftDueDate(val);
+                if (!val) {
+                  setDueDateError('');
+                  return;
+                }
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                  const today = new Date().toISOString().split('T')[0];
+                  if (val >= today) {
+                    setDueDateError('');
+                  } else {
+                    setDueDateError('Date must be today or later.');
+                  }
+                } else {
+                  setDueDateError('Enter date as YYYY-MM-DD.');
+                }
+              }}
               style={{
                 flex: '0 1 170px',
                 padding: '0.75rem 0.9rem',
                 borderRadius: '8px',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: dueDateError ? '1px solid rgba(248,113,113,0.6)' : '1px solid rgba(255,255,255,0.08)',
                 background: 'rgba(15,23,42,0.6)',
                 color: 'var(--text-primary)',
               }}
             />
+            {dueDateError && (
+              <div style={{ color: 'var(--danger)', fontSize: '0.85rem', width: '100%' }}>{dueDateError}</div>
+            )}
             <input
               type="text"
               placeholder="Assignee (optional)"
@@ -186,6 +214,16 @@ export default function RuleDetail({
                 resize: 'vertical',
               }}
             />
+            <select
+              value={draftPriority}
+              onChange={(e) => setDraftPriority(e.target.value)}
+              className="select"
+              style={{ minWidth: '140px' }}
+            >
+              <option value="low">Priority: Low</option>
+              <option value="medium">Priority: Medium</option>
+              <option value="high">Priority: High</option>
+            </select>
             <button type="submit" className="btn">
               Add Step
             </button>

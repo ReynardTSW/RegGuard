@@ -63,7 +63,7 @@ export default function SeverityBoard({ rules = [], onSelectRule, selectedRuleId
                     </div>
                   )}
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Steps: {(actionStepsByRule[item.control_id] || []).length}
+                    Tasks: {(actionStepsByRule[item.control_id] || []).length}
                   </div>
                 </div>
               ))

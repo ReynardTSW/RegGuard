@@ -4,8 +4,22 @@ import KanbanBoard from './components/KanbanBoard';
 import RuleDetail from './components/RuleDetail';
 import DetectedRulesList from './components/DetectedRulesList';
 import SeverityBoard from './components/SeverityBoard';
+import DetectionRulesPanel from './components/DetectionRulesPanel';
+import { uploadRegulation } from './services/api';
+import { exportReport } from './services/api';
+import MetricsDashboard from './components/MetricsDashboard';
+import BeforeAfterPanel from './components/BeforeAfterPanel';
+import StakeholderPanel from './components/StakeholderPanel';
 
 const WORKFLOW_COLUMNS = ['in-progress', 'implemented', 'completed-later'];
+const DEFAULT_DETECTION_RULES = [
+  { id: 'shall', keyword: 'shall', severity: 'High', match_type: 'contains', enabled: true },
+  { id: 'must', keyword: 'must', severity: 'High', match_type: 'contains', enabled: true },
+  { id: 'prohibited', keyword: 'prohibited', severity: 'High', match_type: 'contains', enabled: true },
+  { id: 'required', keyword: 'required', severity: 'Medium', match_type: 'contains', enabled: true },
+  { id: 'should', keyword: 'should', severity: 'Low', match_type: 'contains', enabled: true },
+  { id: 'may', keyword: 'may', severity: 'Low', match_type: 'contains', enabled: true },
+];
 
 const moveRuleToColumn = (prevColumns, rule, target) => {
   const updated = { ...prevColumns };
@@ -37,21 +51,115 @@ function App() {
   const [scoreMin, setScoreMin] = useState('');
   const [scoreMax, setScoreMax] = useState('');
   const [scoreSort, setScoreSort] = useState('none'); // none | asc | desc
+  const [detectionRules, setDetectionRules] = useState(DEFAULT_DETECTION_RULES);
+  const [lastFile, setLastFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [processingMs, setProcessingMs] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
-  // When a new file is uploaded, push the parsed items into the board
+  const runUpload = async (file, rules, preserveWorkflow = false) => {
+    if (!file) return;
+    setUploading(true);
+    const started = Date.now();
+    const prevSteps = preserveWorkflow ? actionStepsByRule : {};
+    const prevColumns = preserveWorkflow ? columns : null;
+    try {
+      const result = await uploadRegulation(file, rules);
+      const items = result.items || [];
+      let nextSteps = {};
+      let nextColumns = {
+        analyzed: [],
+        'in-progress': [],
+        'implemented': [],
+        'completed-later': [],
+      };
+
+      if (preserveWorkflow) {
+        const itemsById = new Map(items.map((it) => [it.control_id, it]));
+        // keep only steps that still belong to returned items
+        Object.entries(prevSteps || {}).forEach(([rid, steps]) => {
+          if (itemsById.has(rid)) {
+            nextSteps[rid] = steps;
+          }
+        });
+        // place items back into their previous columns if present, else analyzed
+        items.forEach((it) => {
+          let col = 'analyzed';
+          if (prevColumns) {
+            Object.entries(prevColumns).forEach(([key, arr]) => {
+              if ((arr || []).some((r) => r.control_id === it.control_id)) {
+                col = key;
+              }
+            });
+          }
+          nextColumns[col] = [...(nextColumns[col] || []), it];
+        });
+      } else {
+        nextColumns = {
+          analyzed: items,
+          'in-progress': [],
+          'implemented': [],
+          'completed-later': [],
+        };
+        nextSteps = {};
+      }
+
+      setColumns(nextColumns);
+      setActionStepsByRule(nextSteps);
+      setSelectedRule(null);
+      setProcessingMs(Date.now() - started);
+    } catch (err) {
+      console.error('Upload failed', err);
+      setProcessingMs(Date.now() - started);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleUploadSuccess = (items) => {
     if (!items || items.length === 0) return;
-    setColumns((prev) => ({
-      ...prev,
-      analyzed: [...prev.analyzed, ...items],
-    }));
+    setColumns({
+      analyzed: items,
+      'in-progress': [],
+      'implemented': [],
+      'completed-later': [],
+    });
+    setActionStepsByRule({});
+    setSelectedRule(null);
+  };
+
+  const handleFileSelected = (file) => {
+    setLastFile(file);
+    runUpload(file, detectionRules);
   };
 
   const handleSelectRule = (rule) => {
     setSelectedRule(rule);
   };
 
-  const handleAddStep = (ruleId, stepText, dueDate, description, assignee, comment) => {
+  const handleExportReport = async () => {
+    if (!lastFile) return;
+    setExporting(true);
+    try {
+      const tasksPayload = {
+        columns,
+        steps: actionStepsByRule,
+      };
+      const blob = await exportReport(lastFile, detectionRules, tasksPayload);
+      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${lastFile.name}-report.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Report export failed', err);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleAddStep = (ruleId, stepText, dueDate, description, assignee, comment, priority) => {
     const trimmed = stepText.trim();
     if (!trimmed) return;
     const rule = selectedRule;
@@ -61,6 +169,7 @@ function App() {
         id: `${ruleId}-${existing.length + 1}`,
         text: trimmed,
         status: 'todo',
+        priority: priority || 'low',
         dueDate: dueDate || null,
         description: description?.trim() || '',
         assignee: assignee?.trim() || '',
@@ -188,8 +297,25 @@ function App() {
     if (detail) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [selectedRule]);
 
+  // Re-run parsing automatically when detection rules change and a file is available.
+  useEffect(() => {
+    if (!lastFile) return;
+    runUpload(lastFile, detectionRules, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detectionRules]);
+
   return (
     <div className="container" style={{ paddingTop: '2rem' }}>
+      <MetricsDashboard
+        totalRules={columns.analyzed.length}
+        highPriority={columns.analyzed.filter((r) => (r.severity || '').toLowerCase() === 'high' || (r.category || '').toUpperCase() === 'CRITICAL').length}
+        mediumLow={columns.analyzed.filter((r) => {
+          const sev = (r.severity || '').toLowerCase();
+          return sev === 'medium' || sev === 'low';
+        }).length}
+        timeSavedHours={(columns.analyzed.length * 2.2) / 60}
+        processingMs={processingMs}
+      />
       <header style={{ marginBottom: '3rem' }}>
         <h1
           style={{
@@ -209,7 +335,43 @@ function App() {
       </header>
 
       <main>
-        <UploadForm onUploadSuccess={handleUploadSuccess} />
+        <BeforeAfterPanel
+          totalRules={columns.analyzed.length}
+          processingMs={processingMs}
+          manualHoursBaseline={4.5}
+          hourlyRate={100}
+        />
+
+        <MetricsDashboard
+          totalRules={columns.analyzed.length}
+          highPriority={columns.analyzed.filter((r) => (r.severity || '').toLowerCase() === 'high' || (r.category || '').toUpperCase() === 'CRITICAL').length}
+          mediumLow={columns.analyzed.filter((r) => {
+            const sev = (r.severity || '').toLowerCase();
+            return sev === 'medium' || sev === 'low';
+          }).length}
+          timeSavedHours={(columns.analyzed.length * 2.2) / 60}
+          processingMs={processingMs}
+        />
+
+        <StakeholderPanel rules={columns.analyzed} />
+
+        <UploadForm
+          onUploadSuccess={handleUploadSuccess}
+          detectionRules={detectionRules}
+          onFileSelected={handleFileSelected}
+          externalLoading={uploading}
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+          <button
+            className="btn"
+            onClick={handleExportReport}
+            disabled={!lastFile || exporting}
+            style={{ opacity: (!lastFile || exporting) ? 0.6 : 1 }}
+          >
+            {exporting ? 'Generating PDF...' : 'Export PDF Report'}
+          </button>
+        </div>
+        <DetectionRulesPanel detectionRules={detectionRules} onChange={setDetectionRules} />
 
         <div style={{ marginTop: '2rem' }}>
           <div className="tab-row">
