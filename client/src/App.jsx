@@ -52,6 +52,10 @@ function App() {
   const [scoreMax, setScoreMax] = useState('');
   const [scoreSort, setScoreSort] = useState('none'); // none | asc | desc
   const [detectionRules, setDetectionRules] = useState(DEFAULT_DETECTION_RULES);
+  const [selectedRuleIds, setSelectedRuleIds] = useState([]);
+  const [exportTopN, setExportTopN] = useState('');
+  const [scoreCutoff, setScoreCutoff] = useState('');
+  const [viewSelectedOnly, setViewSelectedOnly] = useState(false);
   const [lastFile, setLastFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [processingMs, setProcessingMs] = useState(0);
@@ -141,11 +145,96 @@ function App() {
     if (!lastFile) return;
     setExporting(true);
     try {
+      const parsePositiveInt = (value) => {
+        const parsed = parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      };
+
+      const topNVal = parsePositiveInt(exportTopN);
+      const cutoffVal = parsePositiveInt(scoreCutoff);
+      const applyScoreCutoff = (rules) => {
+        if (!cutoffVal) return rules;
+        return rules.filter((r) => (Number(r.score) || 0) >= cutoffVal);
+      };
+
       const tasksPayload = {
         columns,
         steps: actionStepsByRule,
       };
-      const blob = await exportReport(lastFile, detectionRules, tasksPayload);
+      // Visible rules depend on the active tab/filter
+      let visibleRules = [];
+      if (activeTab === 'detected') {
+        visibleRules = filteredDetected;
+      } else if (activeTab === 'severity') {
+        visibleRules = severityTabRules;
+      } else {
+        visibleRules = [
+          ...(columns['in-progress'] || []),
+          ...(columns['implemented'] || []),
+          ...(columns['completed-later'] || []),
+        ];
+      }
+      let filteredRules = applyScoreCutoff(visibleRules);
+      // Apply selection or top-N preference
+      let ruleIdsForExport = filteredRules.map((r) => r.control_id);
+      const allRuleMap = allRules.reduce((acc, r) => {
+        acc[r.control_id] = r;
+        return acc;
+      }, {});
+      const severityMap = {};
+      if (selectedRuleIds.length > 0) {
+        // include selected even if filtered out of current view
+        const selectedRules = selectedRuleIds
+          .map((id) => allRuleMap[id])
+          .filter(Boolean);
+        filteredRules = applyScoreCutoff(selectedRules);
+        ruleIdsForExport = filteredRules.map((r) => r.control_id);
+      } else {
+        let candidates = filteredRules;
+
+        if (topNVal && topNVal > 0) {
+          candidates = [...candidates]
+            .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+            .slice(0, topNVal);
+        }
+
+        // default: export everything visible (no unintended drop)
+        ruleIdsForExport = candidates.map((r) => r.control_id);
+      }
+      ruleIdsForExport.forEach((rid) => {
+        const item = allRuleMap[rid];
+        if (item?.severity) {
+          severityMap[rid] = item.severity;
+        }
+      });
+      const filtersApplied = Boolean(
+        selectedRuleIds.length > 0 ||
+        topNVal ||
+        cutoffVal ||
+        viewSelectedOnly ||
+        severityFilter !== 'all' ||
+        keywordFilter.trim() ||
+        scoreMin !== '' ||
+        scoreMax !== '' ||
+        scoreSort !== 'none'
+      );
+      if (ruleIdsForExport.length === 0 && !filtersApplied) {
+        // Fallback to all rules if no filters were applied and view produced none
+        ruleIdsForExport = allRules.map((r) => r.control_id);
+      }
+      // Rebuild severity map to match final export set
+      ruleIdsForExport.forEach((rid) => {
+        const r = allRuleMap[rid];
+        if (r?.severity) {
+          severityMap[rid] = r.severity;
+        }
+      });
+      const blob = await exportReport(lastFile, detectionRules, tasksPayload, {
+        ruleIds: ruleIdsForExport,
+        topN: topNVal,
+        severityMap,
+        scoreCutoff: cutoffVal,
+      });
       const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url;
@@ -253,8 +342,19 @@ function App() {
   );
 
   const filteredDetected = useMemo(() => {
-    if (severityFilter === 'all') return columns.analyzed;
-    return columns.analyzed.filter((r) => r.severity?.toLowerCase() === severityFilter);
+    const base = severityFilter === 'all'
+      ? columns.analyzed
+      : columns.analyzed.filter((r) => r.severity?.toLowerCase() === severityFilter);
+    if (viewSelectedOnly) {
+      return base.filter((r) => selectedRuleIds.includes(r.control_id));
+    }
+    return base;
+  }, [columns.analyzed, severityFilter, viewSelectedOnly, selectedRuleIds]);
+
+  const detectedSelectable = useMemo(() => {
+    return severityFilter === 'all'
+      ? columns.analyzed
+      : columns.analyzed.filter((r) => r.severity?.toLowerCase() === severityFilter);
   }, [columns.analyzed, severityFilter]);
 
   const allRules = useMemo(() => {
@@ -281,15 +381,16 @@ function App() {
         (max === null || r.score <= max);
       return textMatch && scoreMatch;
     });
+    const viewFiltered = viewSelectedOnly ? filtered.filter((r) => selectedRuleIds.includes(r.control_id)) : filtered;
 
     if (scoreSort === 'asc') {
-      return [...filtered].sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+      return [...viewFiltered].sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
     }
     if (scoreSort === 'desc') {
-      return [...filtered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+      return [...viewFiltered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
-    return filtered;
-  }, [allRules, keywordFilter, scoreMin, scoreMax, scoreSort]);
+    return viewFiltered;
+  }, [allRules, keywordFilter, scoreMin, scoreMax, scoreSort, viewSelectedOnly, selectedRuleIds]);
 
   useEffect(() => {
     if (!selectedRule) return;
@@ -301,6 +402,7 @@ function App() {
   useEffect(() => {
     if (!lastFile) return;
     runUpload(lastFile, detectionRules, true);
+    setSelectedRuleIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detectionRules]);
 
@@ -361,7 +463,29 @@ function App() {
           onFileSelected={handleFileSelected}
           externalLoading={uploading}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.5rem', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Score cutoff ≥
+            <input
+              type="number"
+              min="1"
+              placeholder="Any"
+              value={scoreCutoff}
+              onChange={(e) => setScoreCutoff(e.target.value)}
+              style={{ width: '80px', marginLeft: '0.35rem' }}
+            />
+          </label>
+          <label style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Top N items:
+            <input
+              type="number"
+              min="1"
+              placeholder="All"
+              value={exportTopN}
+              onChange={(e) => setExportTopN(e.target.value)}
+              style={{ width: '80px', marginLeft: '0.35rem' }}
+            />
+          </label>
           <button
             className="btn"
             onClick={handleExportReport}
@@ -370,6 +494,9 @@ function App() {
           >
             {exporting ? 'Generating PDF...' : 'Export PDF Report'}
           </button>
+        </div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.35rem' }}>
+          Use the card checkboxes to pick specific rules. If none selected, the export uses the current filters (score cutoff, per-severity tops, and optional Top N) only.
         </div>
         <DetectionRulesPanel detectionRules={detectionRules} onChange={setDetectionRules} />
 
@@ -411,12 +538,54 @@ function App() {
                     <option value="high">High</option>
                     <option value="unknown">Unknown</option>
                   </select>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setViewSelectedOnly(false)}
+                    style={{ padding: '0.45rem 0.65rem' }}
+                  >
+                    Show All
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => setViewSelectedOnly((prev) => !prev)}
+                    style={{ padding: '0.45rem 0.65rem' }}
+                  >
+                    {viewSelectedOnly ? 'Viewing Selected' : 'View Selected'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      if (selectedRuleIds.length >= detectedSelectable.length && detectedSelectable.length > 0) {
+                        setSelectedRuleIds([]);
+                        setViewSelectedOnly(false);
+                      } else {
+                        setSelectedRuleIds(detectedSelectable.map((r) => r.control_id));
+                      }
+                    }}
+                    style={{ padding: '0.45rem 0.65rem' }}
+                  >
+                    {selectedRuleIds.length >= detectedSelectable.length && detectedSelectable.length > 0 ? 'Unselect All' : 'Select All'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      setSelectedRuleIds([]);
+                      setViewSelectedOnly(false);
+                    }}
+                    style={{ padding: '0.45rem 0.65rem' }}
+                  >
+                    Unselect All
+                  </button>
                 </div>
                 <DetectedRulesList
                   rules={filteredDetected}
                   onSelectRule={handleSelectRule}
                   selectedRuleId={selectedRule?.control_id}
                   actionStepsByRule={actionStepsByRule}
+                  selectedRuleIds={selectedRuleIds}
+                  onToggleSelect={(id, checked) =>
+                    setSelectedRuleIds((prev) => (checked ? [...prev, id] : prev.filter((rid) => rid !== id)))
+                  }
                 />
               </div>
               <div id="rule-detail">
@@ -530,6 +699,10 @@ function App() {
                 onSelectRule={handleSelectRule}
                 selectedRuleId={selectedRule?.control_id}
                 actionStepsByRule={actionStepsByRule}
+                selectedRuleIds={selectedRuleIds}
+                onToggleSelect={(id, checked) =>
+                  setSelectedRuleIds((prev) => (checked ? [...prev, id] : prev.filter((rid) => rid !== id)))
+                }
               />
             </>
           )}

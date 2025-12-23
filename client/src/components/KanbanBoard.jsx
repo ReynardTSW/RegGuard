@@ -153,7 +153,7 @@ export default function KanbanBoard({
                                         key={s.id}
                                         className={`step-list-item status-${s.status || 'todo'}`}
                                         title={s.comment ? `Comment: ${s.comment}` : undefined}
-                                        style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}
+                                        style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem', textDecoration: isDone ? 'line-through' : 'none', opacity: isDone ? 0.75 : 1 }}
                                       >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', flexWrap: 'wrap' }}>
                                           <span

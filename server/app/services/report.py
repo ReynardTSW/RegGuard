@@ -70,16 +70,28 @@ def _count_rule_hits(items: List[RegulationItem], rule: dict) -> int:
 def _render_html(filename: str, items: List[RegulationItem], detection_rules: list = None, tasks_data: Dict[str, Any] = None) -> str:
     now = datetime.datetime.now().strftime("%d %B %Y, %I:%M %p")
 
+    def bucket(item: RegulationItem) -> str:
+        sev = (getattr(item, "severity", None) or "").lower()
+        if sev in ("high", "medium", "low"):
+            return sev
+        cat = (getattr(item, "category", None) or "").upper()
+        if cat in ("HIGH", "CRITICAL"):
+            return "high"
+        if cat == "MEDIUM":
+            return "medium"
+        if cat == "LOW":
+            return "low"
+        return "unknown"
+
     def count_by_sev(item_list: List[RegulationItem]):
         hi = med = lo = 0
         for i in item_list:
-            sev = (i.severity or "").lower()
-            cat = (i.category or "").upper()
-            if sev == "high" or cat in ("HIGH", "CRITICAL"):
+            b = bucket(i)
+            if b == "high":
                 hi += 1
-            elif sev == "medium" or cat == "MEDIUM":
+            elif b == "medium":
                 med += 1
-            elif sev == "low" or cat == "LOW":
+            elif b == "low":
                 lo += 1
         return hi, med, lo
 
@@ -98,18 +110,25 @@ def _render_html(filename: str, items: List[RegulationItem], detection_rules: li
 
     stakeholders = _compute_stakeholders(items)
     high_items = sorted(
-        [i for i in items if (i.severity or "").lower() == "high" or (i.category or "").upper() == "CRITICAL"],
+        [i for i in items if bucket(i) == "high"],
         key=lambda r: getattr(r, "score", 0),
         reverse=True,
     )
     sample_high = high_items[:3]
 
     medium_items = sorted(
-        [i for i in items if (i.severity or "").lower() == "medium" or (i.category or "").upper() == "MEDIUM"],
+        [i for i in items if bucket(i) == "medium"],
         key=lambda r: getattr(r, "score", 0),
         reverse=True,
     )
     sample_medium = medium_items[:3]
+
+    low_items = sorted(
+        [i for i in items if bucket(i) == "low"],
+        key=lambda r: getattr(r, "score", 0),
+        reverse=True,
+    )
+    sample_low = low_items[:3]
 
     applied_rules = []
     for r in (detection_rules or []):
@@ -481,7 +500,29 @@ def _render_html(filename: str, items: List[RegulationItem], detection_rules: li
 
       <div class="section">
         <h3>Low Priority Obligations ({low})</h3>
-        <div class="muted">Not expanded in this report. Refer to application for full list.</div>
+        {''.join([
+          f"""
+          <div class="rule">
+            <div class="rule-title" style="gap:12px;">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#10b981;"></span>
+              <span>{_format_rule_header(item)}</span>
+              <span class="pill pill-low">Score {getattr(item, 'score', 0)}</span>
+            </div>
+            <div class="subhead">Legal Requirement:</div>
+            <div class="rule-body">{html.escape(item.text)}</div>
+            <div class="subhead">Plain-English Action:</div>
+            <div class="rule-body">{html.escape(_plain_action(item.text))}</div>
+            <div class="subhead">Recorded Tasks:</div>
+            <div class="list">
+              {_render_steps(_steps_for_rule(item.control_id))}
+            </div>
+            <div class="subhead">Scoring Breakdown:</div>
+            <div class="list">
+              {"".join([f"<div>&bull; {html.escape(str(r))}</div>" for r in getattr(item, 'score_reasons', [])]) or "<div>&bull; No breakdown available.</div>"}
+            </div>
+          </div>
+          """ for item in sample_low
+        ]) or "<div class='muted'>Not expanded in this report. Refer to application for full list.</div>"}
       </div>
 
       <div class="section">
@@ -536,12 +577,25 @@ def _render_html(filename: str, items: List[RegulationItem], detection_rules: li
 
 
 def _build_plain_pdf(filename: str, items: List[RegulationItem], detection_rules: list = None) -> bytes:
+    def bucket(item: RegulationItem) -> str:
+        sev = (getattr(item, "severity", None) or "").lower()
+        if sev in ("high", "medium", "low"):
+            return sev
+        cat = (getattr(item, "category", None) or "").upper()
+        if cat in ("HIGH", "CRITICAL"):
+            return "high"
+        if cat == "MEDIUM":
+            return "medium"
+        if cat == "LOW":
+            return "low"
+        return "unknown"
+
     # Basic text-only PDF fallback (monospace), paginated.
     now = datetime.datetime.now().strftime("%d %B %Y, %I:%M %p")
     total = len(items)
-    high = sum(1 for i in items if (i.severity or "").lower() == "high" or (i.category or "").upper() == "CRITICAL")
-    medium = sum(1 for i in items if (i.severity or "").lower() == "medium")
-    low = sum(1 for i in items if (i.severity or "").lower() == "low")
+    high = sum(1 for i in items if bucket(i) == "high")
+    medium = sum(1 for i in items if bucket(i) == "medium")
+    low = sum(1 for i in items if bucket(i) == "low")
     high_pct = _percent(high, total)
     medium_pct = _percent(medium, total)
     low_pct = _percent(low, total)
@@ -554,7 +608,7 @@ def _build_plain_pdf(filename: str, items: List[RegulationItem], detection_rules
     value_saved = int(time_saved_hours * hourly_rate)
 
     stakeholders = _compute_stakeholders(items)
-    high_items = [i for i in items if (i.severity or "").lower() == "high" or (i.category or "").upper() == "CRITICAL"]
+    high_items = [i for i in items if bucket(i) == "high"]
     sample_high = high_items[:3]
 
     applied_rules = []

@@ -9,7 +9,14 @@ const scoreClass = (score) => {
   return 'score-pill score-low score-pill--block';
 };
 
-export default function SeverityBoard({ rules = [], onSelectRule, selectedRuleId, actionStepsByRule = {} }) {
+export default function SeverityBoard({
+  rules = [],
+  onSelectRule,
+  selectedRuleId,
+  actionStepsByRule = {},
+  selectedRuleIds = [],
+  onToggleSelect,
+}) {
   const grouped = SEVERITY_ORDER.reduce((acc, sev) => {
     acc[sev] = [];
     return acc;
@@ -48,14 +55,26 @@ export default function SeverityBoard({ rules = [], onSelectRule, selectedRuleId
                   <div style={{ marginBottom: '0.5rem' }}>
                     <div className={scoreClass(item.score)}>Score {item.score}</div>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      {item.control_id} - {toActionStatement(item.text).split('.')[0]}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-                    {toActionStatement(item.text)}
-                  </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', gap: '0.5rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  {item.control_id} - {toActionStatement(item.text).split('.')[0]}
+                </span>
+                {onToggleSelect && (
+                  <input
+                    type="checkbox"
+                    checked={selectedRuleIds.includes(item.control_id)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onToggleSelect(item.control_id, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Select rule for export"
+                  />
+                )}
+              </div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
+                {toActionStatement(item.text)}
+              </div>
                   {item.score_reasons?.length > 0 && (
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.35rem' }}>
                       Scoring: {item.score_reasons.slice(0, 2).join(' · ')}

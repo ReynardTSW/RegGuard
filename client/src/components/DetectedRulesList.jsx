@@ -12,6 +12,8 @@ export default function DetectedRulesList({
   onSelectRule,
   selectedRuleId,
   actionStepsByRule = {},
+  selectedRuleIds = [],
+  onToggleSelect,
 }) {
   return (
     <div className="detected-list">
@@ -41,6 +43,18 @@ export default function DetectedRulesList({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
                 <span className={scoreClass(item.score)}>Score {item.score}</span>
                 <span className={`tag tag-${item.severity}`}>{item.severity}</span>
+                {onToggleSelect && (
+                  <input
+                    type="checkbox"
+                    checked={selectedRuleIds.includes(item.control_id)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onToggleSelect(item.control_id, e.target.checked);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label="Select rule for export"
+                  />
+                )}
               </div>
             </div>
             <div style={{ fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>

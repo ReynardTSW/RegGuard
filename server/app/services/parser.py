@@ -43,6 +43,32 @@ class RegulatoryParser:
             "enforcement case",
         ]
 
+    def is_default_rules(self, rules: list) -> bool:
+        """
+        Returns True when the provided detection_rules payload matches the built-in defaults
+        (all default ids present, keywords/severities/match_types align, none disabled).
+        Used by the API layer to decide whether to allow heuristic fallbacks.
+        """
+        if not isinstance(rules, list):
+            return False
+        if len(rules) != len(self.DEFAULT_DETECTION_RULES):
+            return False
+        defaults_by_id = {r["id"]: r for r in self.DEFAULT_DETECTION_RULES}
+        for rule in rules:
+            rid = rule.get("id")
+            base = defaults_by_id.get(rid)
+            if not base:
+                return False
+            if str(rule.get("keyword", "")).lower() != str(base.get("keyword", "")).lower():
+                return False
+            if str(rule.get("severity", "")).lower() != str(base.get("severity", "")).lower():
+                return False
+            if str(rule.get("match_type", "contains")).lower() != str(base.get("match_type", "contains")).lower():
+                return False
+            if rule.get("enabled", True) is False:
+                return False
+        return True
+
     @staticmethod
     def severity_rank(severity: str) -> int:
         order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Unknown": 4}
