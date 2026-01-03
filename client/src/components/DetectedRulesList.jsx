@@ -12,6 +12,7 @@ export default function DetectedRulesList({
   onSelectRule,
   selectedRuleId,
   actionStepsByRule = {},
+  taskDeadlines = {},
   selectedRuleIds = [],
   onToggleSelect,
 }) {
@@ -36,6 +37,20 @@ export default function DetectedRulesList({
               }
             }}
           >
+            {(() => {
+              const meta = taskDeadlines[item.control_id] || {};
+              const dueLabel = meta.earliest ? meta.earliest.toISOString().slice(0, 10) : 'No due';
+              return (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Next due: {meta.overdue ? 'Overdue' : dueLabel}
+                  </span>
+                  {meta.overdue && (
+                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700 }}>Overdue</span>
+                  )}
+                </div>
+              );
+            })()}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem', alignItems: 'center' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                 {item.control_id} - {summarizeRule(item.text)}

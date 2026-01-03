@@ -56,6 +56,8 @@ function App() {
   const [exportTopN, setExportTopN] = useState('');
   const [scoreCutoff, setScoreCutoff] = useState('');
   const [viewSelectedOnly, setViewSelectedOnly] = useState(false);
+  const [deadlineFilter, setDeadlineFilter] = useState('any'); // any | overdue | due7 | due30 | has-due | no-due
+  const [deadlineSort, setDeadlineSort] = useState('none'); // none | soonest | latest
   const [lastFile, setLastFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [processingMs, setProcessingMs] = useState(0);
@@ -212,6 +214,8 @@ function App() {
         topNVal ||
         cutoffVal ||
         viewSelectedOnly ||
+        deadlineFilter !== 'any' ||
+        deadlineSort !== 'none' ||
         severityFilter !== 'all' ||
         keywordFilter.trim() ||
         scoreMin !== '' ||
@@ -341,15 +345,75 @@ function App() {
     [selectedRule, actionStepsByRule]
   );
 
+  const taskDeadlines = useMemo(() => {
+    const now = new Date();
+    const map = {};
+    Object.entries(actionStepsByRule || {}).forEach(([rid, steps]) => {
+      const pending = (steps || []).filter(
+        (s) => (s.status || 'todo') !== 'done' && (s.status || 'todo') !== 'cancelled'
+      );
+      const dueDates = pending
+        .map((s) => s.dueDate)
+        .filter(Boolean)
+        .map((d) => {
+          const parsed = new Date(d);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        })
+        .filter(Boolean);
+      if (dueDates.length === 0) {
+        map[rid] = { earliest: null, overdue: false, dueInDays: null };
+        return;
+      }
+      const earliest = dueDates.reduce((a, b) => (a < b ? a : b));
+      const diffMs = earliest.getTime() - now.getTime();
+      const dueInDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const overdue = diffMs < 0;
+      map[rid] = { earliest, overdue, dueInDays };
+    });
+    return map;
+  }, [actionStepsByRule]);
+
+  const passesDeadlineFilter = (ruleId) => {
+    const info = taskDeadlines[ruleId];
+    switch (deadlineFilter) {
+      case 'overdue':
+        return !!info?.overdue;
+      case 'due7':
+        return info?.dueInDays !== null && info.dueInDays >= 0 && info.dueInDays <= 7;
+      case 'due30':
+        return info?.dueInDays !== null && info.dueInDays >= 0 && info.dueInDays <= 30;
+      case 'has-due':
+        return !!info && info.earliest !== null;
+      case 'no-due':
+        return !info || info.earliest === null;
+      default:
+        return true;
+    }
+  };
+
+  const applyDeadlineSort = (arr) => {
+    if (deadlineSort === 'none') return arr;
+    return [...arr].sort((a, b) => {
+      const aInfo = taskDeadlines[a.control_id] || {};
+      const bInfo = taskDeadlines[b.control_id] || {};
+      const aTime = aInfo.earliest ? aInfo.earliest.getTime() : Infinity;
+      const bTime = bInfo.earliest ? bInfo.earliest.getTime() : Infinity;
+      if (deadlineSort === 'soonest') return aTime - bTime;
+      if (deadlineSort === 'latest') return bTime - aTime;
+      return 0;
+    });
+  };
+
   const filteredDetected = useMemo(() => {
     const base = severityFilter === 'all'
       ? columns.analyzed
       : columns.analyzed.filter((r) => r.severity?.toLowerCase() === severityFilter);
-    if (viewSelectedOnly) {
-      return base.filter((r) => selectedRuleIds.includes(r.control_id));
-    }
-    return base;
-  }, [columns.analyzed, severityFilter, viewSelectedOnly, selectedRuleIds]);
+    const deadlineFiltered = base.filter((r) => passesDeadlineFilter(r.control_id));
+    const viewFiltered = viewSelectedOnly
+      ? deadlineFiltered.filter((r) => selectedRuleIds.includes(r.control_id))
+      : deadlineFiltered;
+    return applyDeadlineSort(viewFiltered);
+  }, [columns.analyzed, severityFilter, viewSelectedOnly, selectedRuleIds, deadlineFilter, deadlineSort, taskDeadlines]);
 
   const detectedSelectable = useMemo(() => {
     return severityFilter === 'all'
@@ -379,18 +443,19 @@ function App() {
       const scoreMatch =
         (min === null || r.score >= min) &&
         (max === null || r.score <= max);
-      return textMatch && scoreMatch;
+      const deadlineMatch = passesDeadlineFilter(r.control_id);
+      return textMatch && scoreMatch && deadlineMatch;
     });
     const viewFiltered = viewSelectedOnly ? filtered.filter((r) => selectedRuleIds.includes(r.control_id)) : filtered;
 
+    let sorted = viewFiltered;
     if (scoreSort === 'asc') {
-      return [...viewFiltered].sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+      sorted = [...sorted].sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+    } else if (scoreSort === 'desc') {
+      sorted = [...sorted].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
     }
-    if (scoreSort === 'desc') {
-      return [...viewFiltered].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-    }
-    return viewFiltered;
-  }, [allRules, keywordFilter, scoreMin, scoreMax, scoreSort, viewSelectedOnly, selectedRuleIds]);
+    return applyDeadlineSort(sorted);
+  }, [allRules, keywordFilter, scoreMin, scoreMax, scoreSort, viewSelectedOnly, selectedRuleIds, deadlineFilter, deadlineSort, taskDeadlines]);
 
   useEffect(() => {
     if (!selectedRule) return;
@@ -538,6 +603,29 @@ function App() {
                     <option value="high">High</option>
                     <option value="unknown">Unknown</option>
                   </select>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginLeft: '0.35rem' }}>Deadline:</span>
+                  <select
+                    value={deadlineFilter}
+                    onChange={(e) => setDeadlineFilter(e.target.value)}
+                    className="select"
+                  >
+                    <option value="any">Any</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="due7">Due ≤ 7 days</option>
+                    <option value="due30">Due ≤ 30 days</option>
+                    <option value="has-due">Has due date</option>
+                    <option value="no-due">No due date</option>
+                  </select>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Sort by due:</span>
+                  <select
+                    value={deadlineSort}
+                    onChange={(e) => setDeadlineSort(e.target.value)}
+                    className="select"
+                  >
+                    <option value="none">None</option>
+                    <option value="soonest">Soonest</option>
+                    <option value="latest">Latest</option>
+                  </select>
                   <button
                     className="btn btn-ghost"
                     onClick={() => setViewSelectedOnly(false)}
@@ -582,6 +670,7 @@ function App() {
                   onSelectRule={handleSelectRule}
                   selectedRuleId={selectedRule?.control_id}
                   actionStepsByRule={actionStepsByRule}
+                  taskDeadlines={taskDeadlines}
                   selectedRuleIds={selectedRuleIds}
                   onToggleSelect={(id, checked) =>
                     setSelectedRuleIds((prev) => (checked ? [...prev, id] : prev.filter((rid) => rid !== id)))
@@ -693,12 +782,38 @@ function App() {
                     <option value="desc">High to Low</option>
                   </select>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Deadline</span>
+                  <select
+                    value={deadlineFilter}
+                    onChange={(e) => setDeadlineFilter(e.target.value)}
+                    className="select"
+                  >
+                    <option value="any">Any</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="due7">Due ≤ 7 days</option>
+                    <option value="due30">Due ≤ 30 days</option>
+                    <option value="has-due">Has due date</option>
+                    <option value="no-due">No due date</option>
+                  </select>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Sort by due</span>
+                  <select
+                    value={deadlineSort}
+                    onChange={(e) => setDeadlineSort(e.target.value)}
+                    className="select"
+                  >
+                    <option value="none">None</option>
+                    <option value="soonest">Soonest</option>
+                    <option value="latest">Latest</option>
+                  </select>
+                </div>
               </div>
               <SeverityBoard
                 rules={severityTabRules}
                 onSelectRule={handleSelectRule}
                 selectedRuleId={selectedRule?.control_id}
                 actionStepsByRule={actionStepsByRule}
+                taskDeadlines={taskDeadlines}
                 selectedRuleIds={selectedRuleIds}
                 onToggleSelect={(id, checked) =>
                   setSelectedRuleIds((prev) => (checked ? [...prev, id] : prev.filter((rid) => rid !== id)))

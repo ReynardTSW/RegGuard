@@ -14,6 +14,7 @@ export default function SeverityBoard({
   onSelectRule,
   selectedRuleId,
   actionStepsByRule = {},
+  taskDeadlines = {},
   selectedRuleIds = [],
   onToggleSelect,
 }) {
@@ -81,6 +82,14 @@ export default function SeverityBoard({
                       {item.score_reasons.length > 2 ? ' · …' : ''}
                     </div>
                   )}
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.25rem' }}>
+                    {(() => {
+                      const meta = taskDeadlines[item.control_id] || {};
+                      if (meta.overdue) return 'Next due: Overdue';
+                      if (meta.earliest) return `Next due: ${meta.earliest.toISOString().slice(0, 10)}`;
+                      return 'Next due: none';
+                    })()}
+                  </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                     Tasks: {(actionStepsByRule[item.control_id] || []).length}
                   </div>
